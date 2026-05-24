@@ -1,0 +1,9 @@
+node_modules
+dist
+coverage
+.repo-inspector
+.playwright-cli
+*.log
+.DS_Store
+apps/*/dist
+apps/*/node_modules

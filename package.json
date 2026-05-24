@@ -1,0 +1,19 @@
+{
+  "name": "repo-business-reconstructor",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c cyan,magenta \"npm run dev --workspace @repo-inspector/api\" \"npm run dev --workspace @repo-inspector/web\"",
+    "build": "npm run build --workspace @repo-inspector/api && npm run build --workspace @repo-inspector/web",
+    "check:encoding": "node scripts/check-encoding.mjs",
+    "start": "npm run start --workspace @repo-inspector/api",
+    "clean": "rimraf apps/api/dist apps/web/dist .repo-inspector"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "typescript": "^6.0.3"
+  }
+}
