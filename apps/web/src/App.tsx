@@ -1,5 +1,18 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { marked } from "marked";
+import {
+  Background,
+  Controls,
+  Handle,
+  MarkerType,
+  MiniMap,
+  Position,
+  ReactFlow,
+  type Edge,
+  type Node,
+  type NodeProps
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
 
 import {
   connectJobStream,
@@ -876,6 +889,41 @@ type WorldGraphLink = {
   dashed?: boolean;
 };
 
+type CognitionNodeData = {
+  graph: WorldGraphNode;
+  active: boolean;
+  focused: boolean;
+  onFocusId: (nodeId: string | null) => void;
+};
+
+type CognitionFlowNode = Node<CognitionNodeData, "cognition">;
+
+function CognitionNode({ data, selected }: NodeProps<CognitionFlowNode>): JSX.Element {
+  const node = data.graph;
+  return (
+    <button
+      type="button"
+      className={`graph-node readable-node flow-node tone-${node.tone}${data.focused || selected ? " active" : ""}${node.level === "core" ? " core" : ""}${data.active ? " live" : ""}`}
+      onClick={() => data.onFocusId(node.focusId)}
+    >
+      <Handle type="target" position={Position.Left} className="flow-handle" />
+      <Handle type="source" position={Position.Right} className="flow-handle" />
+      <div className="graph-node-head">
+        <strong>{node.label}</strong>
+        <span>{formatPercent(node.confidence)}</span>
+      </div>
+      <small>{node.subtitle}</small>
+      <div className="graph-chip-row">
+        {node.chips.slice(0, 3).map((chip) => (
+          <em key={chip}>{chip}</em>
+        ))}
+      </div>
+    </button>
+  );
+}
+
+const cognitionNodeTypes = { cognition: CognitionNode };
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -890,6 +938,92 @@ function shortEvidenceLabel(path: string): string {
 
 function providerConfidenceLabel(analysis: RepositoryAnalysis): string {
   return analysis.analysisProfileKey || "Runtime";
+}
+
+function isPathLikeLabel(label: string): boolean {
+  return /[\\/]/.test(label) || /^\.[a-z0-9_-]+$/i.test(label) || /\.[a-z0-9]{1,6}$/i.test(label);
+}
+
+function graphNodeLevel(kind: string, label: string, level: "macro" | "meso" | "micro"): WorldGraphNode["level"] {
+  if (kind === "repository") {
+    return "core";
+  }
+
+  if (isPathLikeLabel(label)) {
+    return "micro";
+  }
+
+  if (kind === "domain" || kind === "service" || kind === "dependency") {
+    return "macro";
+  }
+
+  if (kind === "entity" || kind === "flow" || kind === "risk") {
+    return "meso";
+  }
+
+  if (kind === "rule" || kind === "evidence") {
+    return "micro";
+  }
+
+  return level;
+}
+
+function graphNodePriority(node: { confidence: number; status: string; kind: string }): number {
+  const statusBoost = node.status === "confirmed" ? 1 : node.status === "provisional" ? 0.35 : -0.8;
+  const kindBoost = node.kind === "domain" ? 0.4 : node.kind === "service" ? 0.25 : node.kind === "repository" ? 0.5 : 0;
+  return node.confidence + statusBoost + kindBoost;
+}
+
+function isReadableGraphNode(node: { kind: string; label: string; confidence: number; status: string }): boolean {
+  if (node.kind === "repository") {
+    return true;
+  }
+
+  const label = node.label.trim();
+  const looksLikePath = isPathLikeLabel(label);
+  const weakRule = node.kind === "rule" && node.status !== "confirmed";
+
+  if (looksLikePath || weakRule) {
+    return node.confidence >= 0.86;
+  }
+
+  return node.status !== "unconfirmed" || node.confidence >= 0.72;
+}
+
+function graphPosition(level: WorldGraphNode["level"], index: number): { x: number; y: number } {
+  const macro = [
+    { x: 50, y: 18 },
+    { x: 25, y: 30 },
+    { x: 75, y: 30 },
+    { x: 22, y: 55 },
+    { x: 78, y: 55 },
+    { x: 38, y: 72 },
+    { x: 62, y: 72 },
+    { x: 50, y: 84 }
+  ];
+  const meso = [
+    { x: 30, y: 24 },
+    { x: 70, y: 24 },
+    { x: 20, y: 45 },
+    { x: 80, y: 45 },
+    { x: 32, y: 66 },
+    { x: 68, y: 66 },
+    { x: 50, y: 82 }
+  ];
+  const micro = [
+    { x: 18, y: 22 },
+    { x: 38, y: 20 },
+    { x: 62, y: 20 },
+    { x: 82, y: 22 },
+    { x: 18, y: 50 },
+    { x: 82, y: 50 },
+    { x: 30, y: 76 },
+    { x: 50, y: 80 },
+    { x: 70, y: 76 }
+  ];
+
+  const positions = level === "macro" ? macro : level === "meso" ? meso : micro;
+  return positions[index % positions.length];
 }
 
 function topKinds(analysis: RepositoryAnalysis | null, ui: ReturnType<typeof uiText>) {
@@ -915,12 +1049,35 @@ function buildWorldGraph(analysis: RepositoryAnalysis | null, nodes: FocusNode[]
   const toneOrder = ["mint", "cyan", "blue", "violet", "amber", "rose"];
   if (analysis.worldModel?.nodes?.length) {
     const focusByLabel = new Map(nodes.map((node) => [node.label, node.id]));
-    const graphNodes = analysis.worldModel.nodes.slice(0, 28).map((node, index) => {
+    const repositoryNode = analysis.worldModel.nodes.find((node) => node.kind === "repository") ?? analysis.worldModel.nodes[0];
+    const candidates = analysis.worldModel.nodes
+      .filter((node) => node.id !== repositoryNode?.id)
+      .filter(isReadableGraphNode)
+      .map((node) => ({ node, level: graphNodeLevel(node.kind, node.label, node.level) }))
+      .filter((item) => item.level !== "core");
+    const macroNodes = candidates
+      .filter((item) => item.level === "macro")
+      .sort((a, b) => graphNodePriority(b.node) - graphNodePriority(a.node))
+      .slice(0, 8);
+    const mesoNodes = candidates
+      .filter((item) => item.level === "meso")
+      .sort((a, b) => graphNodePriority(b.node) - graphNodePriority(a.node))
+      .slice(0, 8);
+    const microNodes = candidates
+      .filter((item) => item.level === "micro")
+      .sort((a, b) => graphNodePriority(b.node) - graphNodePriority(a.node))
+      .slice(0, 9);
+    const selected = [
+      ...(repositoryNode ? [{ node: repositoryNode, level: "core" as const }] : []),
+      ...macroNodes,
+      ...mesoNodes,
+      ...microNodes
+    ];
+
+    const levelIndex = { macro: 0, meso: 0, micro: 0 };
+    const graphNodes = selected.map(({ node, level }, index) => {
       const isRepository = node.kind === "repository";
-      const angle = (Math.PI * 2 * index) / Math.max(1, analysis.worldModel.nodes.length - 1);
-      const radius = node.level === "macro" ? 26 : node.level === "meso" ? 34 : 42;
-      const x = isRepository ? 42 : clamp(42 + Math.cos(angle) * radius, 5, 82);
-      const y = isRepository ? 34 : clamp(38 + Math.sin(angle) * radius * 0.58, 8, 76);
+      const position = isRepository ? { x: 50, y: 45 } : graphPosition(level, levelIndex[level as keyof typeof levelIndex]++);
       return {
         id: node.id,
         focusId: focusByLabel.get(node.label) ?? null,
@@ -928,9 +1085,9 @@ function buildWorldGraph(analysis: RepositoryAnalysis | null, nodes: FocusNode[]
         subtitle: node.kind,
         confidence: node.confidence,
         tone: isRepository ? "core" : toneOrder[index % toneOrder.length],
-        level: isRepository ? "core" as const : node.level,
-        x,
-        y,
+        level,
+        x: position.x,
+        y: position.y,
         chips: node.tags.slice(0, 3),
         evidence: node.evidenceFiles,
         notes: node.description
@@ -940,19 +1097,21 @@ function buildWorldGraph(analysis: RepositoryAnalysis | null, nodes: FocusNode[]
     const knownNodeIds = new Set(graphNodes.map((node) => node.id));
     const graphLinks = analysis.worldModel.edges
       .filter((edge) => knownNodeIds.has(edge.from) && knownNodeIds.has(edge.to))
-      .slice(0, 36)
       .map((edge, index) => {
         const fromNode = graphNodes.find((node) => node.id === edge.from);
+        const toNode = graphNodes.find((node) => node.id === edge.to);
+        const edgeLevel = fromNode?.level === "core" ? toNode?.level : fromNode?.level;
         return {
           id: edge.id.replace(/[^a-zA-Z0-9_-]/g, "-"),
           from: edge.from,
           to: edge.to,
           tone: fromNode?.tone === "core" ? toneOrder[index % toneOrder.length] : fromNode?.tone ?? toneOrder[index % toneOrder.length],
           kind: edge.kind,
-          level: edge.kind === "evidenced_by" ? "micro" as const : fromNode?.level === "core" ? "macro" as const : fromNode?.level ?? "meso" as const,
+          level: edge.kind === "evidenced_by" ? "micro" as const : edgeLevel === "core" ? "macro" as const : edgeLevel ?? "meso" as const,
           dashed: edge.kind === "evidenced_by" || edge.kind === "raises_risk"
         };
-      });
+      })
+      .slice(0, 28);
 
     return { graphNodes, graphLinks };
   }
@@ -1487,6 +1646,42 @@ function RuntimeWorld({
       .map((node) => node.id)
   );
   const visibleLinks = graphLinks.filter((link) => visibleNodeSet.has(link.from) && visibleNodeSet.has(link.to));
+  const flowNodes = graphNodes
+    .filter((node) => visibleNodeSet.has(node.id))
+    .map((node): CognitionFlowNode => ({
+      id: node.id,
+      type: "cognition",
+      position: {
+        x: (node.x - 50) * 15,
+        y: (node.y - 45) * 10
+      },
+      data: {
+        graph: node,
+        active: activeSet.has(node.id),
+        focused: focus?.id === node.focusId,
+        onFocusId
+      },
+      selected: focus?.id === node.focusId
+    }));
+  const flowEdges = visibleLinks.map((link): Edge => {
+    const active = activeSet.has(link.from) || activeSet.has(link.to);
+    return {
+      id: link.id,
+      source: link.from,
+      target: link.to,
+      type: "smoothstep",
+      animated: active,
+      className: `react-flow-link tone-${link.tone}${link.dashed ? " dashed" : ""}${active ? " active" : ""}`,
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        width: 16,
+        height: 16
+      },
+      style: {
+        strokeWidth: active ? 2.6 : 1.8
+      }
+    };
+  });
   const stageFocusMap: Partial<Record<AnalysisStage, string | null>> = {
     scanRepo: activationTrail[0] ?? null,
     classifySignals: activationTrail[0] ?? null,
@@ -1535,77 +1730,37 @@ function RuntimeWorld({
             ))}
           </div>
           <div className="world-controls">
-            <span className="hint">{locale === "zh-CN" ? "拖拽旋转 · 滚轮缩放" : "Drag to orbit · Scroll to zoom"}</span>
+            <span className="hint">{locale === "zh-CN" ? "点击节点钻取 · 切换层级阅读" : "Select nodes to inspect · Switch layers to read"}</span>
           </div>
         </div>
 
         <div className="world-canvas-panel readable-canvas">
-          <svg className="world-links" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-            {visibleLinks.map((link) => {
-              const from = graphNodes.find((node) => node.id === link.from);
-              const to = graphNodes.find((node) => node.id === link.to);
-              if (!from || !to) {
-                return null;
-              }
-              return (
-                <g key={link.id}>
-                  <path
-                    id={link.id}
-                    className={`world-link tone-${link.tone}${link.dashed ? " dashed" : ""}${activeSet.has(link.from) || activeSet.has(link.to) ? " active" : ""}`}
-                    d={`M ${from.x + 8} ${from.y + 6} C ${from.x + 18} ${from.y + 4}, ${to.x - 8} ${to.y + 10}, ${to.x + 8} ${to.y + 6}`}
-                  />
-                  {activeSet.has(link.from) || activeSet.has(link.to) ? (
-                    <circle className={`flow-particle tone-${link.tone}`} r="0.75">
-                      <animateMotion dur="3.2s" repeatCount="indefinite" rotate="auto">
-                        <mpath href={`#${link.id}`} />
-                      </animateMotion>
-                    </circle>
-                  ) : null}
-                </g>
-              );
-            })}
-          </svg>
-
-          <div className="world-node-layer readable-node-layer">
-            {graphNodes
-              .filter((node) => visibleNodeSet.has(node.id))
-              .map((node) => (
-                <button
-                  key={node.id}
-                  type="button"
-                  className={`graph-node readable-node tone-${node.tone}${focus?.id === node.focusId ? " active" : ""}${node.id === "world-core" || node.level === "core" ? " core" : ""}${activeSet.has(node.id) ? " live" : ""}`}
-                  style={{ left: `${node.x}%`, top: `${node.y}%` }}
-                  onClick={() => onFocusId(node.focusId)}
-                >
-                  <div className="graph-node-head">
-                    <strong>{node.label}</strong>
-                    <span>{formatPercent(node.confidence)}</span>
-                  </div>
-                  <small>{node.subtitle}</small>
-                  <div className="graph-chip-row">
-                    {node.chips.slice(0, 3).map((chip) => (
-                      <em key={chip}>{chip}</em>
-                    ))}
-                  </div>
-                </button>
-              ))}
-
-            {activationTrail.map((nodeId, index) => {
-              const node = graphNodes.find((item) => item.id === nodeId);
-              if (!node) {
-                return null;
-              }
-              return (
-                <div
-                  key={`agent-${nodeId}-${index}`}
-                  className={`agent-presence step-${index}`}
-                  style={{ left: `${node.x}%`, top: `${node.y}%` }}
-                >
-                  {index === 0 ? "AI" : ""}
-                </div>
-              );
-            })}
-          </div>
+          <ReactFlow
+            nodes={flowNodes}
+            edges={flowEdges}
+            nodeTypes={cognitionNodeTypes}
+            fitView
+            fitViewOptions={{ padding: 0.24, maxZoom: 1.08 }}
+            minZoom={0.35}
+            maxZoom={1.45}
+            nodesDraggable
+            nodesConnectable={false}
+            elementsSelectable
+            proOptions={{ hideAttribution: true }}
+            onNodeClick={(_, node) => onFocusId((node.data as CognitionNodeData).graph.focusId)}
+          >
+            <Background gap={34} size={1} color="rgba(255,255,255,0.08)" />
+            <MiniMap
+              pannable
+              zoomable
+              className="world-minimap"
+              nodeColor={(node) => {
+                const tone = (node.data as CognitionNodeData).graph.tone;
+                return tone === "rose" ? "#ff7f6d" : tone === "amber" ? "#f4b64b" : tone === "violet" ? "#a376ff" : tone === "blue" ? "#55a6ff" : tone === "cyan" ? "#29d3dd" : "#71d1b9";
+              }}
+            />
+            <Controls className="world-flow-controls" showInteractive={false} />
+          </ReactFlow>
         </div>
 
         {timelineOpen ? (

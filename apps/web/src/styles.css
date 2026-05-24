@@ -3280,6 +3280,99 @@ button.secondary:hover:not(:disabled) {
 .readable-node.tone-rose { --node-accent: #ff7f6d; }
 .readable-node.tone-core { --node-accent: #71d1b9; }
 
+.react-flow {
+  position: relative;
+  z-index: 2;
+  color: var(--text);
+}
+
+.react-flow__pane {
+  cursor: grab;
+}
+
+.react-flow__pane:active {
+  cursor: grabbing;
+}
+
+.react-flow__node-cognition {
+  background: transparent;
+  border: 0;
+}
+
+.flow-node {
+  position: relative;
+  width: 230px;
+  transform: none;
+  cursor: pointer;
+  font: inherit;
+}
+
+.flow-node.core {
+  width: 280px;
+  min-height: auto;
+}
+
+.flow-node:hover,
+.flow-node:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--node-accent, var(--accent)) 50%, transparent),
+    0 0 42px color-mix(in srgb, var(--node-accent, var(--accent)) 28%, transparent),
+    0 18px 42px rgba(0, 0, 0, 0.32);
+}
+
+.flow-handle {
+  width: 8px;
+  height: 8px;
+  border: 1px solid color-mix(in srgb, var(--node-accent, var(--accent)) 80%, white 6%);
+  background: var(--node-accent, var(--accent));
+  opacity: 0.85;
+}
+
+.react-flow-link {
+  stroke: rgba(113, 209, 185, 0.62);
+  filter: drop-shadow(0 0 5px rgba(113, 209, 185, 0.18));
+}
+
+.react-flow-link.tone-mint { stroke: #53d79f; }
+.react-flow-link.tone-cyan { stroke: #29d3dd; }
+.react-flow-link.tone-blue { stroke: #55a6ff; }
+.react-flow-link.tone-violet { stroke: #a376ff; }
+.react-flow-link.tone-amber { stroke: #f4b64b; }
+.react-flow-link.tone-rose { stroke: #ff7f6d; }
+.react-flow-link.tone-core { stroke: #71d1b9; }
+
+.react-flow-link.dashed {
+  stroke-dasharray: 8 8;
+  opacity: 0.56;
+}
+
+.react-flow-link.active {
+  opacity: 0.95;
+  filter: drop-shadow(0 0 8px currentColor);
+}
+
+.world-minimap {
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  background: rgba(5, 13, 16, 0.76);
+}
+
+.world-flow-controls {
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  background: rgba(5, 13, 16, 0.76);
+  box-shadow: none;
+}
+
+.world-flow-controls button {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
+  color: var(--text);
+}
+
 .readable-node .graph-node-head {
   gap: 12px;
 }
