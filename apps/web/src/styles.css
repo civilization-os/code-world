@@ -3225,6 +3225,79 @@ button.secondary:hover:not(:disabled) {
   height: calc(100vh - 360px);
 }
 
+.readable-canvas {
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.readable-canvas::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.026) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.026) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(circle at center, black 32%, transparent 78%);
+  opacity: 0.55;
+}
+
+.readable-node-layer {
+  z-index: 3;
+}
+
+.readable-node {
+  width: auto;
+  min-width: 190px;
+  max-width: 250px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  transform: translate(-50%, -50%);
+  border-color: color-mix(in srgb, var(--node-accent, var(--accent)) 64%, transparent);
+  background:
+    linear-gradient(180deg, rgba(8, 18, 21, 0.98), rgba(7, 15, 18, 0.92)),
+    radial-gradient(circle at top left, color-mix(in srgb, var(--node-accent, var(--accent)) 20%, transparent), transparent 58%);
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.32),
+    0 0 0 1px rgba(255, 255, 255, 0.025),
+    0 0 28px color-mix(in srgb, var(--node-accent, var(--accent)) 18%, transparent);
+}
+
+.readable-node.core {
+  width: auto;
+  min-width: 260px;
+  max-width: 320px;
+  padding: 18px 20px;
+  border-radius: 18px;
+}
+
+.readable-node.tone-mint { --node-accent: #53d79f; }
+.readable-node.tone-cyan { --node-accent: #29d3dd; }
+.readable-node.tone-blue { --node-accent: #55a6ff; }
+.readable-node.tone-violet { --node-accent: #a376ff; }
+.readable-node.tone-amber { --node-accent: #f4b64b; }
+.readable-node.tone-rose { --node-accent: #ff7f6d; }
+.readable-node.tone-core { --node-accent: #71d1b9; }
+
+.readable-node .graph-node-head {
+  gap: 12px;
+}
+
+.readable-node .graph-node-head strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.readable-node small {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .canvas-floating-actions {
   position: fixed;
   top: 92px;

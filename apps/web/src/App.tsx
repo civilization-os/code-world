@@ -15,7 +15,6 @@ import {
 } from "./api";
 import { detectLocale, persistLocale, uiText, type LocaleCode } from "./i18n";
 import type { AnalysisStage, JobSnapshot, ProviderConfig, ProviderTestResult, RepositoryAnalysis, ReportView } from "./types";
-import World3D from "./World3D";
 
 type BannerTone = "info" | "success" | "warning" | "error";
 type SurfaceMode = "workspace" | "history";
@@ -1540,15 +1539,73 @@ function RuntimeWorld({
           </div>
         </div>
 
-        <div className="world-canvas-panel">
-          <World3D
-            nodes={graphNodes.filter((n) => visibleNodeSet.has(n.id))}
-            links={visibleLinks}
-            activeIds={[...activeSet]}
-            focusedId={focus?.id ?? null}
-            onNodeClick={(fid) => onFocusId(fid)}
-            locale={locale}
-          />
+        <div className="world-canvas-panel readable-canvas">
+          <svg className="world-links" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+            {visibleLinks.map((link) => {
+              const from = graphNodes.find((node) => node.id === link.from);
+              const to = graphNodes.find((node) => node.id === link.to);
+              if (!from || !to) {
+                return null;
+              }
+              return (
+                <g key={link.id}>
+                  <path
+                    id={link.id}
+                    className={`world-link tone-${link.tone}${link.dashed ? " dashed" : ""}${activeSet.has(link.from) || activeSet.has(link.to) ? " active" : ""}`}
+                    d={`M ${from.x + 8} ${from.y + 6} C ${from.x + 18} ${from.y + 4}, ${to.x - 8} ${to.y + 10}, ${to.x + 8} ${to.y + 6}`}
+                  />
+                  {activeSet.has(link.from) || activeSet.has(link.to) ? (
+                    <circle className={`flow-particle tone-${link.tone}`} r="0.75">
+                      <animateMotion dur="3.2s" repeatCount="indefinite" rotate="auto">
+                        <mpath href={`#${link.id}`} />
+                      </animateMotion>
+                    </circle>
+                  ) : null}
+                </g>
+              );
+            })}
+          </svg>
+
+          <div className="world-node-layer readable-node-layer">
+            {graphNodes
+              .filter((node) => visibleNodeSet.has(node.id))
+              .map((node) => (
+                <button
+                  key={node.id}
+                  type="button"
+                  className={`graph-node readable-node tone-${node.tone}${focus?.id === node.focusId ? " active" : ""}${node.id === "world-core" || node.level === "core" ? " core" : ""}${activeSet.has(node.id) ? " live" : ""}`}
+                  style={{ left: `${node.x}%`, top: `${node.y}%` }}
+                  onClick={() => onFocusId(node.focusId)}
+                >
+                  <div className="graph-node-head">
+                    <strong>{node.label}</strong>
+                    <span>{formatPercent(node.confidence)}</span>
+                  </div>
+                  <small>{node.subtitle}</small>
+                  <div className="graph-chip-row">
+                    {node.chips.slice(0, 3).map((chip) => (
+                      <em key={chip}>{chip}</em>
+                    ))}
+                  </div>
+                </button>
+              ))}
+
+            {activationTrail.map((nodeId, index) => {
+              const node = graphNodes.find((item) => item.id === nodeId);
+              if (!node) {
+                return null;
+              }
+              return (
+                <div
+                  key={`agent-${nodeId}-${index}`}
+                  className={`agent-presence step-${index}`}
+                  style={{ left: `${node.x}%`, top: `${node.y}%` }}
+                >
+                  {index === 0 ? "AI" : ""}
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         {timelineOpen ? (
