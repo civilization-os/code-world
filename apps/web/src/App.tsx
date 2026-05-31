@@ -1835,6 +1835,7 @@ export default function App(): JSX.Element {
 
   const ui = useMemo(() => uiText(locale), [locale]);
   const runtimeActive = Boolean(snapshot || busy);
+  const showWelcome = surfaceMode !== "history" && !snapshot && !busy;
   const starterMarkdown = useMemo(
     () => `# ${ui.title}\n\n${ui.heroCopy}`,
     [ui.heroCopy, ui.title]
@@ -1954,18 +1955,7 @@ export default function App(): JSX.Element {
     () =>
       [
         {
-          key: "project",
-          label: locale === "zh-CN" ? "项目" : "Project",
-          active: surfaceMode === "workspace" && workspaceOpen && workspaceFocus === "repo",
-          onClick: () => {
-            setSurfaceMode("workspace");
-            setViewMode("world");
-            setWorkspaceOpen(true);
-            setWorkspaceFocus("repo");
-          }
-        },
-        {
-          key: "analysis",
+          key: "analyze",
           label: locale === "zh-CN" ? "分析" : "Analyze",
           active: surfaceMode === "workspace" && viewMode === "world" && !workspaceOpen,
           onClick: () => {
@@ -1975,7 +1965,7 @@ export default function App(): JSX.Element {
             setWorkspaceFocus("config");
           }
         },
-        {
+        ...(workspaceAnalysis ? [{
           key: "report",
           label: locale === "zh-CN" ? "报告" : "Report",
           active: surfaceMode === "workspace" && viewMode === "report",
@@ -1985,7 +1975,7 @@ export default function App(): JSX.Element {
             setWorkspaceOpen(false);
             setWorkspaceFocus("config");
           }
-        },
+        }] : []),
         {
           key: "history",
           label: locale === "zh-CN" ? "历史" : "History",
@@ -1997,18 +1987,9 @@ export default function App(): JSX.Element {
             setWorkspaceOpen(false);
             setWorkspaceFocus("history");
           }
-        },
-        {
-          key: "library",
-          label: locale === "zh-CN" ? "知识库" : "Library",
-          active: workspaceOpen && workspaceFocus === "knowledge",
-          onClick: () => {
-            setWorkspaceOpen(true);
-            setWorkspaceFocus("knowledge");
-          }
         }
       ] as const,
-    [locale, surfaceMode, viewMode, workspaceOpen, workspaceFocus, snapshot]
+    [locale, surfaceMode, viewMode, workspaceOpen, workspaceFocus, snapshot, workspaceAnalysis]
   );
 
   async function refreshHistory(): Promise<void> {
@@ -2779,7 +2760,8 @@ function HistoryRecordLayout({
         </div>
       </header>
 
-      <section className={`workspace-strip runtime-shell ${runtimeActive ? "active" : ""}`} aria-label={locale === "zh-CN" ? "工作台上下文" : "Workspace context"}>
+      {(showWelcome && !workspaceOpen) ? null : (
+      <section className={`workspace-strip ${runtimeActive ? "active" : ""}`} aria-label={locale === "zh-CN" ? "工作台上下文" : "Workspace context"}>
         <div className="workspace-shell-copy">
           <span className="workspace-shell-title">
             {historySurface && snapshot
@@ -2787,8 +2769,8 @@ function HistoryRecordLayout({
                 ? "打开的记录"
                 : "Opened record"
               : locale === "zh-CN"
-                ? "当前工作区"
-                : "Current workspace"}
+                ? "工作区"
+                : "Workspace"}
           </span>
           <div className="workspace-shell-meta">
             {historySurface && snapshot ? (
@@ -2800,23 +2782,20 @@ function HistoryRecordLayout({
                   {new Date(snapshot.updatedAt).toLocaleString(locale, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
                 </span>
               </>
-            ) : (
+            ) : runtimeActive ? (
               <>
-                <span className="workspace-pill">{repoPath.trim() || (locale === "zh-CN" ? "等待仓库" : "Waiting for repo")}</span>
-                <span className="workspace-pill">{providerConfig.provider}</span>
-                <span className="workspace-pill">{providerConfig.model.trim() || (locale === "zh-CN" ? "未配置模型" : "No model configured")}</span>
+                <span className="workspace-pill">{snapshot?.repoName ?? (repoPath.trim() || "—")}</span>
                 <span className="workspace-pill">{snapshot ? ui.statusLabels[snapshot.status] : ui.statusLabels.queued}</span>
+                <span className="workspace-pill">{snapshot?.currentStage ? snapshot.currentStage : ui.statusLabels.queued}</span>
               </>
-            )}
+            ) : null}
           </div>
         </div>
         <div className="workspace-actions">
           {historySurface && snapshot ? (
-            <>
-              <button type="button" className="secondary" onClick={() => setSurfaceMode("workspace")}>
-                {locale === "zh-CN" ? "返回工作区" : "Back to workspace"}
-              </button>
-            </>
+            <button type="button" className="secondary" onClick={() => setSurfaceMode("workspace")}>
+              {locale === "zh-CN" ? "返回工作区" : "Back to workspace"}
+            </button>
           ) : workspaceAnalysis ? (
             <div className="workspace-mode-toggle">
               <button
@@ -2835,9 +2814,9 @@ function HistoryRecordLayout({
               </button>
             </div>
           ) : null}
-          {workspaceHint ? <span className="workspace-shell-hint">{workspaceHint}</span> : null}
         </div>
       </section>
+      )}
 
       {workspaceOpen ? (
         <aside className="workspace-drawer">
@@ -3155,7 +3134,49 @@ function HistoryRecordLayout({
         </aside>
       ) : null}
 
-      {historySurface ? (
+      {showWelcome ? (
+        <main className="welcome-view" role="main">
+          <div className="welcome-card">
+            <div className="welcome-brand">
+              <span className="brand-mark" style={{ width: 48, height: 48, borderRadius: 8, background: "var(--accent-subtle)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                <span className="brand-orb" style={{ width: 16, height: 16 }} />
+              </span>
+              <div>
+                <h1 style={{ fontFamily: "var(--font-serif)", fontWeight: 400, fontSize: "1.5rem", letterSpacing: "-0.02em" }}>Intelligence-Coder</h1>
+                <p className="hint" style={{ marginTop: 4 }}>{locale === "zh-CN" ? "仓库业务分析工具" : "Repository business intelligence"}</p>
+              </div>
+            </div>
+            <p className="welcome-description">
+              {locale === "zh-CN"
+                ? "提交一个代码仓库，AI 会自动分析它的业务领域、核心实体、数据流和业务规则，生成结构化认知报告。"
+                : "Analyze any codebase to uncover its business domain, core entities, data flows, and business rules — delivered as a structured cognition graph and report."}
+            </p>
+            <div className="welcome-actions">
+              <button type="button" onClick={() => { setWorkspaceOpen(true); setWorkspaceFocus("config"); }}>
+                {locale === "zh-CN" ? "开始分析" : "Start analysis"}
+              </button>
+              <button type="button" className="secondary" onClick={() => { setSurfaceMode("history"); setWorkspaceOpen(false); }}>
+                {locale === "zh-CN" ? "查看历史记录" : "View history"}
+              </button>
+            </div>
+            {historyJobs.length > 0 ? (
+              <div className="welcome-recent">
+                <div className="nav-section-head">
+                  <h3>{locale === "zh-CN" ? "最近记录" : "Recent analyses"}</h3>
+                </div>
+                <div className="welcome-recent-list">
+                  {historyJobs.slice(0, 4).map((job) => (
+                    <button key={job.id} type="button" className="welcome-recent-item" onClick={() => void openHistoryJob(job)}>
+                      <strong>{job.repoName}</strong>
+                      <span>{ui.statusLabels[job.status]} · {new Date(job.updatedAt).toLocaleDateString(locale)}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </main>
+      ) : historySurface ? (
         <HistoryRecordLayout
           snapshot={snapshot}
           historyJobs={visibleHistoryJobs}
